@@ -1,0 +1,22 @@
+{
+  "name": "huma-max-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Бот Huma Marketing в мессенджере MAX",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --env-file=.env src/index.js",
+    "test": "node test/flow.test.js && node test/tg.test.js && node test/broadcast.test.js && node test/deliveries.test.js && node test/health.test.js",
+    "fix-certs": "bash scripts/fix-certs.sh",
+    "start:tg": "node --env-file=.env src/tg.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "@maxhub/max-bot-api": "^1.0.2",
+    "grammy": "^1.46.0",
+    "https-proxy-agent": "^7.0.6",
+    "socks-proxy-agent": "^8.0.5"
+  }
+}
