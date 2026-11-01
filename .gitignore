@@ -5,6 +5,8 @@ data/
 certs/
 .trash-*
 
-# Мини-приложение живёт в своём репозитории rdana743/huma-miniapp (GitHub Pages)
-miniapp/
+# Мини-приложение живёт в своём репозитории rdana743/huma-miniapp (GitHub Pages).
+# Здесь нужен только его config.js: бот берёт из него каталог продуктов
+miniapp/*
+!miniapp/config.js
 *.new
