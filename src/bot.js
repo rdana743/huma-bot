@@ -313,6 +313,15 @@ function rub(n) {
   return Math.round(n).toLocaleString('ru-RU') + ' ₽';
 }
 
+// Ошибка MAX в понятном виде. Нет status — значит не дошли до MAX (сеть, прокси): такое стоит повторить
+function wrapMaxError(e) {
+  const err = new Error(e.description || e.message);
+  if (e.status === 403 || /block|denied|forbidden/i.test(String(e.code || e.message))) err.blocked = true;
+  if (e.status === 429) err.retryAfter = 5;
+  if (!e.status) err.network = true;
+  return err;
+}
+
 // Отправка одного сообщения рассылки (для src/broadcast.js)
 function maxSender(bot) {
   return async (userId, m) => {
@@ -324,10 +333,7 @@ function maxSender(bot) {
     try {
       await bot.api.sendMessageToUser(Number(userId), m.text, { format: 'markdown', attachments: rows ? [Keyboard.inlineKeyboard(rows)] : [] });
     } catch (e) {
-      const err = new Error(e.description || e.message);
-      if (e.status === 403 || /block|denied|forbidden/i.test(String(e.code || e.message))) err.blocked = true;
-      if (e.status === 429) err.retryAfter = 5;
-      throw err;
+      throw wrapMaxError(e);
     }
   };
 }
@@ -352,7 +358,7 @@ function maxHandlers(bot) {
         await bot.api.removeChatMember(Number(chat), Number(userId));
       } catch (e) {
         if (e.status === 404) return; // уже не в канале
-        throw new Error(e.description || e.message);
+        throw wrapMaxError(e);
       }
     },
   };
