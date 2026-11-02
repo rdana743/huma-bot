@@ -93,10 +93,12 @@ function createTgBot(token, options) {
   // Ссылка t.me/<бот>?start=post1 — метка источника; ?start=buy_<id> — заявка из мини-приложения
   bot.command('start', (ctx) => {
     const payload = ctx.match || '';
-    const source = payload.startsWith('buy_') ? 'miniapp' : payload;
-    storage.touchUser(storeUser(ctx.from), 'tg:' + (source || 'direct'));
-    track(ctx, 'start', { source: source || null }, source);
-    if (payload.startsWith('buy_')) return startLead(ctx, payload.slice(4));
+    const fromApp = payload.startsWith('buy_');
+    storage.touchUser(storeUser(ctx.from), 'tg:' + (fromApp ? 'miniapp' : payload || 'direct'));
+    // Сайту — всегда явный источник: метка, direct или unknown (из мини-приложения). Первую метку выбирает сайт
+    const source = fromApp ? 'unknown' : payload || 'direct';
+    track(ctx, 'start', { source }, source);
+    if (fromApp) return startLead(ctx, payload.slice(4));
     return greeting(ctx);
   });
   bot.command('menu', (ctx) => {

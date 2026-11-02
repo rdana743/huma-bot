@@ -8,6 +8,11 @@ process.env.TG_ADMIN_IDS = '777';
 process.env.MINI_APP_URL = 'https://example.org/app/';
 
 const { createTgBot } = require('../src/tg-bot');
+// Какой источник бот отдаёт сайту в событии start
+const analytics = require('../src/analytics');
+const tracked = [];
+analytics.track = (platform, user, event, props) => tracked.push({ platform, user, event, props });
+const lastStart = () => tracked.filter((t) => t.event === 'start').pop().props.source;
 
 const calls = [];
 const bot = createTgBot('123:test', { botInfo: { id: 1, is_bot: true, first_name: 'HUMA', username: 'huma_tg_bot', can_join_groups: false, can_read_all_group_messages: false, supports_inline_queries: false } });
@@ -63,7 +68,13 @@ const last = () => sent().pop().payload;
   await bot.handleUpdate(msg('+7 912 000-00-00, хочу подробнее'));
   const admin2 = sent().filter((c) => String(c.payload.chat_id) === '777').pop();
   assert.match(admin2.payload.text, /Тема: Тариф Pro/);
-  console.log('✓ кнопка «Оформить» из мини-приложения → заявка');
+  assert.equal(lastStart(), 'unknown', 'вход из мини-приложения — не метка');
+  console.log('✓ кнопка «Оформить» из мини-приложения → заявка, источник unknown');
+
+  await bot.handleUpdate(msg('/start'));
+  assert.equal(lastStart(), 'direct');
+  assert.deepEqual(tracked.filter((t) => t.event === 'start').map((t) => t.props.source), ['post1', 'unknown', 'direct']);
+  console.log('✓ /start без метки → direct');
 
   await bot.handleUpdate({ ...msg('/stats'), message: { ...msg('/stats').message, from: { ...from, id: 777 }, chat: { id: 777, type: 'private' } } });
   assert.match(last().text, /Заявок: 2/);
