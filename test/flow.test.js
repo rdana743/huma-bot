@@ -10,6 +10,11 @@ process.env.CHANNEL_URL = 'https://max.ru/huma_channel';
 process.env.PAY_URL_GUIDE_CALLS = 'https://pay.example/guide';
 
 const { createBot } = require('../src/bot');
+// Какой источник бот отдаёт сайту в событии start
+const analytics = require('../src/analytics');
+const tracked = [];
+analytics.track = (platform, user, event, props) => tracked.push({ platform, user, event, props });
+const lastStart = () => tracked.filter((t) => t.event === 'start').pop();
 
 const calls = [];
 const fakeFetch = async (url, init) => {
@@ -47,7 +52,8 @@ const buttons = () => {
   await bot.handleUpdate(started('tg_post1'));
   assert.match(lastText(), /^Привет, Иван! Используй наше приложение/);
   assert.deepEqual(buttons().map((b) => [b.type, b.web_app]), [['open_app', 'huma_bot']]);
-  console.log('✓ приветствие с кнопкой мини-приложения');
+  assert.deepEqual([lastStart().props.source, lastStart().user.source], ['tg_post1', 'tg_post1']);
+  console.log('✓ приветствие с кнопкой мини-приложения, метка уходит на сайт');
 
   await bot.handleUpdate(text('/menu'));
   assert.match(lastText(), /Huma Marketing/);
@@ -99,7 +105,17 @@ const buttons = () => {
   await bot.handleUpdate(text('+7 912 000-00-00'));
   const fromApp = calls.filter((c) => c.query.user_id === '999').pop();
   assert.match(fromApp.body.text, /Тема: Тариф Pro/);
-  console.log('✓ кнопка «Оформить» из мини-приложения → заявка «Тариф Pro»');
+  assert.equal(lastStart().props.source, 'unknown', 'вход из мини-приложения — не метка');
+  console.log('✓ кнопка «Оформить» из мини-приложения → заявка «Тариф Pro», источник unknown');
+
+  await bot.handleUpdate(started(''));
+  assert.equal(lastStart().props.source, 'direct');
+  await bot.handleUpdate(text('/start'));
+  assert.equal(lastStart().props.source, 'direct', 'команда /start тоже сообщает о входе');
+  assert.equal(tracked.filter((t) => t.event === 'start').length, 4);
+  const stats = require('../src/storage').stats();
+  assert.deepEqual(stats.bySource, { tg_post1: 1 }, 'локальная статистика не изменилась');
+  console.log('✓ вход без метки и команда /start → direct; /stats прежний');
 
   console.log('\nВсе проверки пройдены');
 })().catch((e) => { console.error(e); process.exit(1); });

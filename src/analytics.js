@@ -1,8 +1,10 @@
 // Отправка событий и заявок в админку сайта (huma.marketing/admin/bot).
 // Нужны SITE_URL и BOT_EVENTS_SECRET в .env. Без них бот работает как раньше, просто без аналитики.
 //
-// События копятся и уходят пачками раз в 3 секунды. Если сайт недоступен — повторяем позже,
-// в памяти держим не больше 2000 событий.
+// События копятся и уходят пачками раз в 3 секунды. Если сайт недоступен — повторяем позже.
+// В памяти держим не больше 2000 обычных событий и отдельно до 50 000 событий start:
+// по ним сайт считает, откуда пришёл человек, поэтому они не вытесняются обычными и хранятся все, по порядку.
+// Что не влезло, сайт догонит сверкой с data/users.json.
 
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
 const SECRET = process.env.BOT_EVENTS_SECRET || '';
@@ -10,7 +12,12 @@ const enabled = () => Boolean(SITE && SECRET);
 
 let fetchImpl = (...a) => fetch(...a);
 const queue = new Map(); // "platform:id" -> { platform, user, events: [] }
-let size = 0;
+const MAX_EVENTS = 2000;
+const MAX_STARTS = 50_000;
+let size = 0; // обычные события в очереди
+let starts = 0; // события start в очереди
+
+const isStart = (e) => e.event === 'start';
 
 function setFetch(f) {
   fetchImpl = f;
@@ -34,11 +41,15 @@ async function post(path, body) {
 function track(platform, user, event, props = {}) {
   if (!enabled() || !user?.id) return;
   const key = `${platform}:${user.id}`;
+  if (event === 'start' ? starts >= MAX_STARTS : size >= MAX_EVENTS) return;
   const item = queue.get(key) || { platform, user: {}, events: [] };
-  item.user = { ...item.user, ...Object.fromEntries(Object.entries(user).filter(([, v]) => v != null && v !== '')), id: String(user.id) };
-  if (size >= 2000) return;
+  const fresh = Object.fromEntries(Object.entries(user).filter(([, v]) => v != null && v !== ''));
+  // Метку, которая пришла раньше, не затираем: порядок входов важен сайту
+  if (item.user.source) delete fresh.source;
+  item.user = { ...item.user, ...fresh, id: String(user.id) };
   item.events.push({ event, props, at: new Date().toISOString() });
-  size++;
+  if (event === 'start') starts++;
+  else size++;
   queue.set(key, item);
 }
 
@@ -49,6 +60,7 @@ async function flush() {
   const batch = [...queue.values()];
   queue.clear();
   size = 0;
+  starts = 0;
   for (const item of batch) {
     try {
       await post('/api/bot/events', item);
@@ -56,9 +68,13 @@ async function flush() {
       // Вернём в очередь — отправим в следующий раз
       const key = `${item.platform}:${item.user.id}`;
       const cur = queue.get(key);
-      if (cur) cur.events.unshift(...item.events);
-      else queue.set(key, item);
-      size += item.events.length;
+      if (cur) {
+        cur.events.unshift(...item.events);
+        cur.user = { ...cur.user, ...item.user }; // метка из более ранней пачки важнее
+      } else queue.set(key, item);
+      const s = item.events.filter(isStart).length;
+      starts += s;
+      size += item.events.length - s;
       console.error('Аналитика: сайт недоступен, повторим позже:', e.message);
     }
   }

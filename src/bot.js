@@ -88,16 +88,20 @@ function createBot(token, options) {
   // Метка в ссылке max.ru/<бот>?start=tg_post1 попадает сюда — по ней видно, откуда пришёл человек
   bot.on('bot_started', (ctx) => {
     const payload = ctx.startPayload || '';
-    const source = payload.startsWith('buy_') ? 'miniapp' : payload;
-    storage.touchUser(ctx.user, source);
-    track(ctx, 'start', { source: source || null }, source);
+    const fromApp = payload.startsWith('buy_');
+    storage.touchUser(ctx.user, fromApp ? 'miniapp' : payload);
+    // Сайту — всегда явный источник: метка, direct (без метки) или unknown (из мини-приложения).
+    // Какая метка первая, решает сайт
+    const source = fromApp ? 'unknown' : payload || 'direct';
+    track(ctx, 'start', { source }, source);
     // Пришли из мини-приложения по кнопке «Оформить»: сразу собираем заявку
-    if (payload.startsWith('buy_')) return startLead(ctx, payload.slice(4));
+    if (fromApp) return startLead(ctx, payload.slice(4));
     return greeting(ctx);
   });
 
   bot.command('start', (ctx) => {
     storage.touchUser(userOf(ctx));
+    track(ctx, 'start', { source: 'direct' }, 'direct');
     return greeting(ctx);
   });
 
